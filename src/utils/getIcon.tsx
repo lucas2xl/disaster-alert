@@ -1,4 +1,4 @@
-import { Image } from 'native-base';
+import { Image, IImageProps } from 'native-base';
 
 import winds from '../assets/winds.png';
 import flood from '../assets/flood.png';
@@ -10,7 +10,10 @@ import earthquake from '../assets/earthquake.png';
 import caveIn from '../assets/cave-in.png';
 import treeFall from '../assets/tree-fall.png';
 
-export function getIcon(category: string) {
+interface getIconProps extends IImageProps {
+  category: string;
+}
+export function getIcon({ category, ...rest }: getIconProps) {
   let icon;
 
   switch (category) {
@@ -37,6 +40,7 @@ export function getIcon(category: string) {
       break;
     case 'tree-fall':
       icon = treeFall;
+      break;
     case 'flood':
       icon = flood;
       break;
@@ -45,5 +49,14 @@ export function getIcon(category: string) {
       break;
   }
 
-  return <Image source={icon} h="10" w="10" resizeMode="contain" alt="icon" />;
+  return (
+    <Image
+      source={icon}
+      h="10"
+      w="10"
+      resizeMode="contain"
+      alt="icon"
+      {...rest}
+    />
+  );
 }

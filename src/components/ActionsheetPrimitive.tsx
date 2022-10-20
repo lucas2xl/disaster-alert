@@ -30,7 +30,7 @@ function Item(label: string, category: string) {
       _text={{
         color: 'white',
       }}
-      startIcon={getIcon(category)}
+      startIcon={getIcon({ category })}
       _pressed={{
         bg: 'violet.400',
         rounded: 'md',

@@ -1,27 +1,19 @@
 import { useEffect, useState } from 'react';
 import { Alert, Platform } from 'react-native';
 import MapView, { Marker, PROVIDER_GOOGLE } from 'react-native-maps';
-import { MaterialCommunityIcons, Feather } from '@expo/vector-icons';
 import * as Location from 'expo-location';
-import {
-  Box,
-  HStack,
-  Icon,
-  IconButton,
-  Stagger,
-  useDisclose,
-  VStack,
-} from 'native-base';
-import { useSplash } from '../hooks/useSplash';
+import { Box, Center, Spinner, useDisclose, VStack } from 'native-base';
 import { mapStyles } from '../styles/maps';
 import { api } from '../services/api';
 import { socket } from '../services/io';
 import { getIcon } from '../utils/getIcon';
 import { ModalPrimitive } from '../components/ModalPrimitive';
 import { ActionsheetPrimitive } from '../components/ActionsheetPrimitive';
-import { Splash } from './Splash';
+import { Card } from '../components/Card';
+import { useNavigation } from '@react-navigation/native';
+import { CircleButton } from '../components/CircleButton';
 
-interface IAlert {
+export interface IAlert {
   id: string;
   category: string;
   description: string;
@@ -32,13 +24,17 @@ interface IAlert {
 }
 
 export function Home() {
-  const { loading: isSplashLoading } = useSplash();
   const [isValid, setIsValid] = useState(true);
   const [loading, setLoading] = useState(false);
   const [category, setCategory] = useState('');
   const [description, setDescription] = useState('');
   const [markers, setMarkers] = useState<IAlert[]>([]);
   const { isOpen, onToggle } = useDisclose();
+  const navigation = useNavigation();
+  const [location, setLocation] = useState<Location.LocationObject>(
+    {} as Location.LocationObject
+  );
+  const [currentInfo, setCurrentInfo] = useState<IAlert>({} as IAlert);
   const {
     isOpen: isAddAlertOpen,
     onClose: onCloseAddAlert,
@@ -49,14 +45,24 @@ export function Home() {
     onClose: onCloseSubtitle,
     onOpen: onOpenSubtitle,
   } = useDisclose();
+  const {
+    isOpen: isInfoOpen,
+    onClose: onCloseInfo,
+    onOpen: onOpenInfo,
+  } = useDisclose();
 
   useEffect(() => {
     (async () => {
+      setLoading(true);
       let { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
         Alert.alert('Permission to access location was denied');
         return;
       }
+
+      let location = await Location.getCurrentPositionAsync({});
+      setLocation(location);
+      setLoading(false);
     })();
   }, []);
 
@@ -90,7 +96,9 @@ export function Home() {
     setLoading(true);
 
     try {
-      let location = await Location.getCurrentPositionAsync({});
+      let location = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Low,
+      });
       const { latitude, longitude } = location.coords;
 
       await api.post('/alerts', {
@@ -130,8 +138,32 @@ export function Home() {
     setDescription('');
   }
 
-  if (isSplashLoading) {
-    return <Splash />;
+  function handleOpenInfo(info: IAlert) {
+    console.log('info', info);
+    onOpenInfo();
+    setCurrentInfo(info);
+  }
+
+  async function handleRemoveAlert(data: IAlert) {
+    setLoading(true);
+
+    try {
+      await api.patch(`/alerts/${data.id}`, {
+        status: false,
+      });
+
+      socket.emit('newAlert', {});
+      onCloseInfo();
+    } catch (error) {
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function handleNavigateToChat(data: IAlert) {
+    console.log('data', data);
+    onCloseInfo();
+    navigation.navigate('Chat', { data });
   }
 
   return (
@@ -140,116 +172,61 @@ export function Home() {
       bg="trueGray.900"
       safeArea={Platform.OS === 'android' ? true : undefined}
     >
-      <MapView
-        showsUserLocation={true}
-        zoomControlEnabled={true}
-        provider={PROVIDER_GOOGLE}
-        customMapStyle={mapStyles}
-        style={{ height: '100%', width: '100%' }}
-        showsMyLocationButton
-      >
-        {markers?.map(marker => (
-          <Marker
-            key={marker.id}
-            coordinate={{
-              latitude: marker.lat,
-              longitude: marker.long,
-            }}
-            title={marker.category}
-            description={marker.description}
-          >
-            {getIcon(marker.category)}
-          </Marker>
-        ))}
-      </MapView>
-
-      <Box position="absolute" left="3.5" bottom="12" zIndex="999">
-        <Stagger
-          visible={isOpen}
-          initial={{
-            opacity: 0,
-            scale: 0,
-            translateY: 34,
-          }}
-          animate={{
-            translateY: 0,
-            scale: 1,
-            opacity: 1,
-            transition: {
-              type: 'spring',
-              mass: 0.8,
-              stagger: {
-                offset: 30,
-                reverse: true,
-              },
-            },
-          }}
-          exit={{
-            translateY: 34,
-            scale: 0.5,
-            opacity: 0,
-            transition: {
-              duration: 100,
-              stagger: {
-                offset: 30,
-                reverse: true,
-              },
-            },
+      {location?.coords?.latitude ? (
+        <MapView
+          showsUserLocation={true}
+          zoomControlEnabled={true}
+          provider={PROVIDER_GOOGLE}
+          customMapStyle={mapStyles}
+          style={{ height: '100%', width: '100%' }}
+          showsMyLocationButton
+          initialRegion={{
+            latitude: location?.coords?.latitude || 0,
+            longitude: location?.coords?.longitude || 0,
+            latitudeDelta: 0.0922,
+            longitudeDelta: 0.0421,
           }}
         >
-          <IconButton
-            onPress={handleOpenSubtitle}
-            mb="4"
-            variant="solid"
-            bg="violet.400"
-            borderRadius="full"
-            colorScheme="violet"
-            icon={<Icon as={Feather} size="6" name="tag" color="warmGray.50" />}
-          />
-          <IconButton
-            onPress={handleOpenAlert}
-            mb="4"
-            variant="solid"
-            bg="violet.400"
-            colorScheme="violet"
-            borderRadius="full"
-            icon={
-              <Icon
-                as={MaterialCommunityIcons}
-                size="6"
-                name="plus"
-                color="warmGray.50"
-              />
+          {markers?.map(marker => {
+            if (marker.status === true) {
+              return (
+                <Marker
+                  onPress={() => handleOpenInfo(marker)}
+                  key={marker.id}
+                  coordinate={{
+                    latitude: marker.lat,
+                    longitude: marker.long,
+                  }}
+                >
+                  {getIcon({ category: marker.category })}
+                </Marker>
+              );
             }
-          />
-        </Stagger>
+          })}
+        </MapView>
+      ) : (
+        <Center flex="1">
+          <Spinner color="violet.600" />
+        </Center>
+      )}
 
-        <HStack alignItems="center">
-          <IconButton
-            variant="solid"
-            borderRadius="full"
-            size="lg"
-            w="12"
-            h="12"
-            onPress={onToggle}
-            bg="violet.500"
-            _pressed={{
-              bg: 'violet.800',
-            }}
-            icon={
-              <Icon
-                as={MaterialCommunityIcons}
-                size="6"
-                name="dots-horizontal"
-                color="warmGray.50"
-                _dark={{
-                  color: 'warmGray.50',
-                }}
-              />
-            }
-          />
-        </HStack>
+      <Box position="absolute" right="3.5" bottom="120px" zIndex="999">
+        <CircleButton
+          isOpen={isOpen}
+          onToggle={onToggle}
+          onPressAddAlert={handleOpenAlert}
+          onPressSubtitle={handleOpenSubtitle}
+        />
       </Box>
+
+      <Card
+        loading={loading}
+        onPress={handleRemoveAlert}
+        isOpen={isInfoOpen}
+        onClose={onCloseInfo}
+        data={currentInfo}
+        onPressChat={handleNavigateToChat}
+      />
 
       <ModalPrimitive
         onPress={handleAddAlert}
